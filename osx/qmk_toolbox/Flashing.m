@@ -63,6 +63,8 @@
         [self flashKiibohdWithFile:file];
     if ([USB canFlash:AVRISP])
         [self flashAVRISP:mcu withFile:file];
+    if ([USB canFlash:USBAsp])
+        [self flashUSBAsp:mcu withFile:file];
     if ([USB canFlash:USBTiny])
         [self flashUSBTiny:mcu withFile:file];
 }
@@ -98,10 +100,8 @@
 
 - (void)eepromResetDFU:(NSString *)mcu {
     NSString * result;
-    NSString * file = [[NSBundle mainBundle] pathForResource:[mcu stringByAppendingString:@"_eeprom_reset"] ofType:@"hex"];
-    result = [self runProcess:@"dfu-programmer" withArgs:@[mcu, @"erase", @"--force"]];
-    result = [self runProcess:@"dfu-programmer" withArgs:@[mcu, @"flash", @"--eeprom", file]];
-    [_printer print:@"Device has been erased - please reflash" withType:MessageType_Bootloader];
+    NSString * file = [[NSBundle mainBundle] pathForResource:@"reset" ofType:@"eep"];
+    result = [self runProcess:@"dfu-programmer" withArgs:@[mcu, @"flash", @"--force", @"--eeprom", file]];
 }
 
 - (void)flashCaterina:(NSString *)mcu withFile:(NSString *)file {
@@ -110,7 +110,7 @@
 
 - (void)eepromResetCaterina:(NSString *)mcu {
     NSString * result;
-    NSString * file = [mcu stringByAppendingString:@"_eeprom_reset.hex"];
+    NSString * file = [[NSBundle mainBundle] pathForResource:@"reset" ofType:@"eep"];
     result = [self runProcess:@"avrdude" withArgs:@[@"-p", mcu, @"-c", @"avr109", @"-U", [NSString stringWithFormat:@"eeprom:w:%@:i", file], @"-P", caterinaPort, @"-C", @"avrdude.conf"]];
 }
 
@@ -123,11 +123,19 @@
 }
 
 - (void)flashSTM32WithFile:(NSString *)file {
-    [self runProcess:@"dfu-util" withArgs:@[@"-a", @"0", @"-d", @"0482:df11", @"-s", @"0x8000000:leave", @"-D", file]];
+    if([[[file pathExtension] lowercaseString] isEqualToString:@"bin"]) {
+        [self runProcess:@"dfu-util" withArgs:@[@"-a", @"0", @"-d", @"0482:df11", @"-s", @"0x8000000:leave", @"-D", file]];
+    } else {
+        [_printer print:@"Only firmware files in .bin format can be flashed with dfu-util!" withType:MessageType_Error];
+    }
 }
 
 - (void)flashKiibohdWithFile:(NSString *)file {
-    [self runProcess:@"dfu-util" withArgs:@[@"-D", file]];
+    if([[[file pathExtension] lowercaseString] isEqualToString:@"bin"]) {
+        [self runProcess:@"dfu-util" withArgs:@[@"-D", file]];
+    } else {
+        [_printer print:@"Only firmware files in .bin format can be flashed with dfu-util!" withType:MessageType_Error];
+    }
 }
 
 - (void)flashAVRISP:(NSString *)mcu withFile:(NSString *)file {
@@ -136,6 +144,10 @@
 
 - (void)flashUSBTiny:(NSString *)mcu withFile:(NSString *)file {
     [self runProcess:@"avrdude" withArgs:@[@"-p", mcu, @"-c", @"usbtiny", @"-U", [NSString stringWithFormat:@"flash:w:%@:i", file], @"-P", caterinaPort, @"-C", @"avrdude.conf"]];
+}
+
+- (void)flashUSBAsp:(NSString *)mcu withFile:(NSString *)file {
+    [self runProcess:@"avrdude" withArgs:@[@"-p", mcu, @"-c", @"usbasp", @"-U", [NSString stringWithFormat:@"flash:w:%@:i", file], @"-C", @"avrdude.conf"]];
 }
 
 @end

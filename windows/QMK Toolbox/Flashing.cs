@@ -23,8 +23,10 @@ namespace QMK_Toolbox
         Stm32,
         Kiibohd,
         Avrisp,
+        Usbasp,
         UsbTiny,
         BootloadHID,
+        AtmelSamBa,
         NumberOfChipsets
     };
 
@@ -49,9 +51,11 @@ namespace QMK_Toolbox
             "libusb-1.0.dll",
             "libusb0.dll", // x86/libusb0_x86.dll
             "mcu-list.txt",
-            "atmega32u4_eeprom_reset.hex",
+            "reset.eep",
             "dfu-prog-usb-1.2.2.zip",
             "bootloadHID.exe",
+            "mdloadler64.exe",
+            "applet-flash-samd51j18a.bin"
         };
 
         
@@ -61,6 +65,7 @@ namespace QMK_Toolbox
             _printer = printer;
             EmbeddedResourceHelper.ExtractResources(_resources);
 
+            /*
             var query = new System.Management.SelectQuery("Win32_SystemDriver") { Condition = "Name = 'libusb0'" };
             var searcher = new System.Management.ManagementObjectSearcher(query);
             var drivers = searcher.Get();
@@ -95,6 +100,7 @@ namespace QMK_Toolbox
                     printer.Print("Error: " + errorString, MessageType.Error);
                 }
             }
+            */
 
             _process = new Process();
             //process.EnableRaisingEvents = true;
@@ -183,10 +189,14 @@ namespace QMK_Toolbox
                 FlashKiibohd(file);
             if (Usb.CanFlash(Chipset.Avrisp))
                 FlashAvrisp(mcu, file);
+            if (Usb.CanFlash(Chipset.Usbasp))
+                FlashUsbasp(mcu, file);
             if (Usb.CanFlash(Chipset.UsbTiny))
                 FlashUsbTiny(mcu, file);
             if (Usb.CanFlash(Chipset.BootloadHID))
                 FlashBootloadHID(file);
+            if (Usb.CanFlash(Chipset.AtmelSamBa))
+                FlashAtmelSamBa(file);
         }
 
         public void Reset(string mcu)
@@ -216,29 +226,43 @@ namespace QMK_Toolbox
 
         private void ResetDfu(string mcu) => RunProcess("dfu-programmer.exe", $"{mcu} reset");
 
-        private void EepromResetDfu(string mcu)
-        {
-            var file = mcu + "_eeprom_reset.hex";
-            RunProcess("dfu-programmer.exe", $"{mcu} erase --force");
-            RunProcess("dfu-programmer.exe", $"{mcu} flash --eeprom \"{file}\"");
-            _printer.Print("Device has been erased - please reflash", MessageType.Bootloader);
-        }
+        private void EepromResetDfu(string mcu) => RunProcess("dfu-programmer.exe", $"{mcu} flash --force --eeprom \"reset.eep\"");
 
         private void FlashCaterina(string mcu, string file) => RunProcess("avrdude.exe", $"-p {mcu} -c avr109 -U flash:w:\"{file}\":i -P {CaterinaPort}");
 
-        private void EepromResetCaterina(string mcu) => RunProcess("avrdude.exe", $"-p {mcu} -c avr109 -U eeprom:w:\"{mcu}_eeprom_reset.hex\":i -P {CaterinaPort}");
+        private void EepromResetCaterina(string mcu) => RunProcess("avrdude.exe", $"-p {mcu} -c avr109 -U eeprom:w:\"reset.eep\":i -P {CaterinaPort}");
 
         private void FlashHalfkay(string mcu, string file) => RunProcess("teensy_loader_cli.exe", $"-mmcu={mcu} \"{file}\" -v");
 
         private void ResetHalfkay(string mcu) => RunProcess("teensy_loader_cli.exe", $"-mmcu={mcu} -bv");
 
-        private void FlashStm32(string mcu, string file) => RunProcess("dfu-util.exe", $"-a 0 -d 0483:df11 -s 0x08000000:leave -D \"{file}\"");
+        private void FlashStm32(string mcu, string file)
+        {
+            if (Path.GetExtension(file)?.ToLower() == ".bin") {
+                RunProcess("dfu-util.exe", $"-a 0 -d 0483:df11 -s 0x08000000:leave -D \"{file}\"");
+            } else {
+                _printer.Print("Only firmware files in .bin format can be flashed with dfu-util!", MessageType.Error);
+            }
+        }
 
-        private void FlashKiibohd(string file) => RunProcess("dfu-util.exe", $"-D \"{file}\"");
+        private void FlashKiibohd(string file)
+        {
+            if (Path.GetExtension(file)?.ToLower() == ".bin") {
+                RunProcess("dfu-util.exe", $"-D \"{file}\"");
+            } else {
+                _printer.Print("Only firmware files in .bin format can be flashed with dfu-util!", MessageType.Error);
+            }
+        }
 
         private void FlashAvrisp(string mcu, string file)
         {
             RunProcess("avrdude.exe", $"-p {mcu} -c avrisp -U flash:w:\"{file}\":i -P {CaterinaPort}");
+            _printer.Print("Flash complete", MessageType.Bootloader);
+        }
+
+        private void FlashUsbasp(string mcu, string file)
+        {
+            RunProcess("avrdude.exe", $"-p {mcu} -c usbasp -U flash:w:\"{file}\":i");
             _printer.Print("Flash complete", MessageType.Bootloader);
         }
 
@@ -250,5 +274,7 @@ namespace QMK_Toolbox
 
         private void FlashBootloadHID(string file) => RunProcess("bootloadHID.exe", $"-r \"{file}\"");
         private void ResetBootloadHID() => RunProcess("bootloadHID.exe", $"-r");
+
+        private void FlashAtmelSamBa(string file) => RunProcess("mdloader64.exe", $"-p {CaterinaPort} -D \"{file}\"");
     }
 }

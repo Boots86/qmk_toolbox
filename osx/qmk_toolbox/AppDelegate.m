@@ -109,7 +109,7 @@
     if ([[[filename pathExtension] lowercaseString] isEqualToString:@"qmk"] ||
     [[[filename pathExtension] lowercaseString] isEqualToString:@"hex"] ||
     [[[filename pathExtension] lowercaseString] isEqualToString:@"bin"]) {
-        [self setFilePath:[NSURL URLWithString:filename]];
+        [self setFilePath:[NSURL fileURLWithPath:filename]];
         return true;
     } else {
         return false;
@@ -124,7 +124,7 @@
 - (void)setFilePath:(NSURL *)path {
     NSString * filename = @"";
     if ([path.scheme isEqualToString:@"file"])
-        filename = [[NSString stringWithString:path.absoluteString] stringByReplacingOccurrencesOfString:@"file://" withString:@""];
+        filename = [[path.absoluteString stringByRemovingPercentEncoding] stringByReplacingOccurrencesOfString:@"file://" withString:@""];
     if ([path.scheme isEqualToString:@"qmk"]) {
         NSURL * url;
         if ([path.absoluteString containsString:@"qmk://"])
@@ -190,6 +190,7 @@
     [_printer printResponse:@"And the following ISP flasher protocols:\n" withType:MessageType_Info];
     [_printer printResponse:@" - USBTiny (AVR Pocket)\n" withType:MessageType_Info];
     [_printer printResponse:@" - AVRISP (Arduino ISP)\n" withType:MessageType_Info];
+    [_printer printResponse:@" - USBASP (AVR ISP)\n" withType:MessageType_Info];
     
     
 //    [_flasher runProcess:@"dfu-programmer" withArgs:@[@"--help"]];
@@ -263,6 +264,10 @@
 - (IBAction)loadKeymapClick:(id)sender {
     NSString * keyboard = [[_keyboardBox objectValue] stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
     [self setFilePath:[NSURL URLWithString:[NSString stringWithFormat:@"qmk:http://qmk.fm/compiled/%@_default.hex", keyboard]]];
+}
+
+- (IBAction)clearButtonClick:(id)sender {
+    [[self textView] setString: @""];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)theApplication {

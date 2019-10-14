@@ -12,7 +12,7 @@
 #include <IOKit/serial/IOSerialKeys.h>
 #include <IOKit/IOBSD.h>
 
-
+#define FILEPATH_SIZE 64
 #define DEFINE_ITER(type) \
 static io_iterator_t            g##type##AddedIter; \
 static io_iterator_t            g##type##RemovedIter
@@ -25,6 +25,7 @@ DEFINE_ITER(Halfkay);
 DEFINE_ITER(STM32);
 DEFINE_ITER(Kiibohd);
 DEFINE_ITER(AVRISP);
+DEFINE_ITER(USBAsp);
 DEFINE_ITER(USBTiny);
 static Printing * _printer;
 
@@ -54,6 +55,7 @@ static int devicesAvailable[NumberOfChipsets];
     CFMutableDictionaryRef  STM32MatchingDict;
     CFMutableDictionaryRef  KiibohdMatchingDict;
     CFMutableDictionaryRef  AVRISPMatchingDict;
+    CFMutableDictionaryRef  USBAspMatchingDict;
     CFMutableDictionaryRef  USBTinyMatchingDict;
     CFRunLoopSourceRef      runLoopSource;
     kern_return_t           kr;
@@ -110,6 +112,7 @@ dest##DeviceRemoved(NULL, g##dest##RemovedIter) \
     VID_PID_MATCH(0x0483, 0xDF11, STM32);
     VID_PID_MATCH(0x1C11, 0xB007, Kiibohd);
     VID_PID_MATCH(0x16C0, 0x0483, AVRISP);
+    VID_PID_MATCH(0x16C0, 0x05DC, USBAsp);
     VID_PID_MATCH(0x1781, 0x0C9F, USBTiny);
  
  
@@ -157,11 +160,12 @@ static void type##DeviceAdded(void *refCon, io_iterator_t iterator) { \
             [_printer print:[NSString stringWithFormat:@"%@ %@", @(STR(type)), @"device connected"] withType:MessageType_Bootloader]; \
             deviceConnected(type); \
             io_iterator_t serialPortIterator; \
-            char deviceFilePath[64]; \
+            char deviceFilePath[FILEPATH_SIZE]; \
             MyFindModems(&serialPortIterator); \
             MyGetModemPath(serialPortIterator, deviceFilePath, sizeof(deviceFilePath)); \
             if (!deviceFilePath[0]) { \
                 printf("No modem port found.\n"); \
+                [_printer printResponse:@"No modem port found, try again." withType:MessageType_Bootloader]; \
             } else { \
                 [delegate setCaterinaPort:[NSString stringWithFormat:@"%s", deviceFilePath]]; \
                 [_printer printResponse:[NSString stringWithFormat:@"Found port: %s", deviceFilePath] withType:MessageType_Bootloader]; \
@@ -192,6 +196,7 @@ DEVICE_EVENTS(Halfkay);
 DEVICE_EVENTS(STM32);
 DEVICE_EVENTS(Kiibohd);
 DEVICE_EVENTS_PORT(AVRISP);
+DEVICE_EVENTS(USBAsp);
 DEVICE_EVENTS_PORT(USBTiny);
 
 static kern_return_t MyFindModems(io_iterator_t *matchingServices)
@@ -242,7 +247,6 @@ static kern_return_t MyGetModemPath(io_iterator_t serialPortIterator, char *devi
 {
     io_object_t     modemService;
     kern_return_t   kernResult = KERN_FAILURE;
-    Boolean     modemFound = false;
  
     // Initialize the returned path
     *deviceFilePath = '\0';
@@ -254,42 +258,44 @@ static kern_return_t MyGetModemPath(io_iterator_t serialPortIterator, char *devi
     {
         CFTypeRef   deviceFilePathAsCFString;
  
-    // Get the callout device's path (/dev/cu.xxxxx).
-    // The callout device should almost always be
-    // used. You would use the dialin device (/dev/tty.xxxxx) when
-    // monitoring a serial port for
-    // incoming calls, for example, a fax listener.
+        // Get the callout device's path (/dev/cu.xxxxx).
+        // The callout device should almost always be
+        // used. You would use the dialin device (/dev/tty.xxxxx) when
+        // monitoring a serial port for
+        // incoming calls, for example, a fax listener.
  
-    deviceFilePathAsCFString = IORegistryEntryCreateCFProperty(modemService,
-                            CFSTR(kIOCalloutDeviceKey),
-                            kCFAllocatorDefault,
-                            0);
+        deviceFilePathAsCFString = IORegistryEntryCreateCFProperty(modemService,
+                                                                   CFSTR(kIOCalloutDeviceKey),
+                                                                   kCFAllocatorDefault,
+                                                                   0);
         if (deviceFilePathAsCFString)
         {
             Boolean result;
  
-        // Convert the path from a CFString to a NULL-terminated C string
-        // for use with the POSIX open() call.
- 
-        result = CFStringGetCString(deviceFilePathAsCFString,
-                                        deviceFilePath,
+            // Convert the path from a CFString to a NULL-terminated C string
+            // for use with the POSIX open() call.
+            char testDeviceFilePath[FILEPATH_SIZE];
+            result = CFStringGetCString(deviceFilePathAsCFString,
+                                        testDeviceFilePath,
                                         maxPathSize,
                                         kCFStringEncodingASCII);
             CFRelease(deviceFilePathAsCFString);
  
             if (result)
             {
-                printf("BSD path: %s", deviceFilePath);
-                modemFound = true;
-                kernResult = KERN_SUCCESS;
+                NSString *testDevice = [NSString stringWithUTF8String:testDeviceFilePath];
+                if ([testDevice rangeOfString:@"Bluetooth"].location == NSNotFound) {
+                    memcpy(deviceFilePath, testDeviceFilePath, FILEPATH_SIZE);
+                    printf("BSD path: %s\n", deviceFilePath);
+                    kernResult = KERN_SUCCESS;
+                } else {
+                    printf("BSD path (ignored): %s\n", testDeviceFilePath);
+                    continue;
+                }
             }
         }
- 
-        printf("\n");
- 
         // Release the io_service_t now that we are done with it.
- 
-    (void) IOObjectRelease(modemService);
+        IOObjectRelease(modemService);
     }
  
     return kernResult;

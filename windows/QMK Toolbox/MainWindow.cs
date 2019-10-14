@@ -1,4 +1,4 @@
-﻿//  Created by Jack Humbert on 9/1/17.
+//  Created by Jack Humbert on 9/1/17.
 //  Copyright © 2017 Jack Humbert. This code is licensed under MIT license (see LICENSE.md for details).
 
 using QMK_Toolbox.Properties;
@@ -206,9 +206,11 @@ namespace QMK_Toolbox
             _printer.PrintResponse(" - STM32 (ARM) via dfu-util (http://dfu-util.sourceforge.net/)\n", MessageType.Info);
             _printer.PrintResponse(" - Kiibohd (ARM) via dfu-util (http://dfu-util.sourceforge.net/)\n", MessageType.Info);
             _printer.PrintResponse(" - BootloadHID (Atmel, ps2avrGB, CA66) via bootloadHID (https://www.obdev.at/products/vusb/bootloadhid.html)\n", MessageType.Info);
+            _printer.PrintResponse(" - Atmel SAM-BA via mdloader (https://github.com/patrickmt/mdloader)\n", MessageType.Info);
             _printer.PrintResponse("And the following ISP flasher protocols:\n", MessageType.Info);
             _printer.PrintResponse(" - USBTiny (AVR Pocket)\n", MessageType.Info);
             _printer.PrintResponse(" - AVRISP (Arduino ISP)\n", MessageType.Info);
+            _printer.PrintResponse(" - USBASP (AVR ISP)\n", MessageType.Info);
 
             var devices = new List<UsbDeviceInfo>();
 
@@ -234,7 +236,7 @@ namespace QMK_Toolbox
             {
                 using (var wc = new WebClient())
                 {
-                    var json = wc.DownloadString("https://compile.qmk.fm/v1/keyboards");
+                    var json = wc.DownloadString("http://api.qmk.fm/v1/keyboards");
                     var keyboards = JsonConvert.DeserializeObject<List<string>>(json);
                     keyboardBox.Items.Clear();
                     foreach (var keyboard in keyboards)
@@ -303,7 +305,7 @@ namespace QMK_Toolbox
                         _printer.Print("There are no devices available", MessageType.Error);
                     }
 
-                    // Re-enable flash/reset button after flashing 
+                    // Re-enable flash/reset button after flashing
                     this.Invoke((MethodInvoker)delegate
                     {
                         flashButton.Enabled = true;
@@ -475,12 +477,38 @@ namespace QMK_Toolbox
             }
         }
 
-        private void filepathBox_KeyPress(object sender, KeyPressEventArgs e)
+        private void filepathBox_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.KeyChar == 13)
+            if (e.KeyCode == Keys.Enter)
             {
                 SetFilePath(filepathBox.Text);
+                e.Handled = true;
             }
+            else if (e.KeyCode == Keys.Delete)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+
+                if (filepathBox.SelectedIndex < 0)
+                    return;
+
+                int selectionIndex = filepathBox.Items.IndexOf(filepathBox.Text);
+                int hoverIndex = filepathBox.SelectedIndex;
+
+                filepathBox.Items.RemoveAt(filepathBox.SelectedIndex);
+
+                if (hoverIndex == filepathBox.Items.Count)
+                    filepathBox.SelectedIndex = hoverIndex - 1;
+                else if (filepathBox.Items.Count > 0)
+                    filepathBox.SelectedIndex = hoverIndex;
+                else
+                    filepathBox.SelectedIndex = -1;
+            }
+        }
+
+        private void filepathBox_SelectionCommitted(object sender, EventArgs e)
+        {
+
         }
 
         private void SetFilePath(string filepath)
@@ -494,7 +522,7 @@ namespace QMK_Toolbox
                 {
                     Directory.CreateDirectory(Path.Combine(Application.LocalUserAppDataPath, "downloads"));
                 }
-                
+
                 try
                 {
                     _printer.Print($"Downloading the file: {url}", MessageType.Info);
@@ -748,6 +776,11 @@ namespace QMK_Toolbox
             _devices[deviceIndex].WriteReport(report, ReportWritten);
             _devices[deviceIndex].CloseDevice();
             _printer.Print("Sending report", MessageType.Hid);
+        }
+
+        private void clearButton_Click(object sender, EventArgs e)
+        {
+            logTextBox.Clear();
         }
 
         private void MainWindow_DragDrop(object sender, DragEventArgs e)
